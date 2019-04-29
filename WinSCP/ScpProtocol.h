@@ -41,6 +41,18 @@
 #define PUBLICKEYERROR	-2
 #endif
 
+#ifndef OPENFILEERROR
+#define OPENFILEERROR	-3
+#endif
+
+#ifndef CANNOTOPENS
+#define CANNOTOPENS	-4
+#endif
+
+#ifndef SENDERROR
+#define SENDERROR	-5
+#endif
+
 
 class ScpProtocol : public AllProtocol
 {
@@ -59,7 +71,7 @@ public:
 	bool Initssh();
 
 	//尝试打开要传输的文件
-	bool OpenlocalFile();
+	int OpenlocalFile(const CString &FilePath);
 
 	//创建套接口
 	bool CreateSock();
@@ -75,6 +87,11 @@ public:
 
 	//认证身份 
 	int AuthenticateIdentity();
+
+
+
+	/*如果认证成功，建立好连接，这里开始发送文件*/
+	int SendFile(const CString &FilePath,const CString &ScpPath);
 
 	//释放资源
 	void Release();

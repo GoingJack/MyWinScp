@@ -66,10 +66,13 @@ bool ScpProtocol::Initssh()
 	return true;
 }
 
-bool ScpProtocol::OpenlocalFile()
+int ScpProtocol::OpenlocalFile(const CString &FilePath)
 {
-
-	return false;
+	local = fopen(FilePath, "rb");
+	if (local == nullptr)
+		return OPENFILEERROR;
+	stat(FilePath, &fileinfo);
+	return 0;
 }
 
 bool ScpProtocol::CreateSock()
@@ -132,6 +135,57 @@ int ScpProtocol::AuthenticateIdentity()
 			password)) {
 			return PUBLICKEYERROR;
 		}
+	}
+	return 0;
+}
+
+int ScpProtocol::SendFile(const CString & FilePath, const CString &ScpPath)
+{
+	if (OpenlocalFile(FilePath))
+	{
+		return OPENFILEERROR;
+	}
+	channel = libssh2_scp_send(session,ScpPath,fileinfo.st_mode & 0777, 
+		(unsigned long)fileinfo.st_size);
+	if (!channel)
+	{
+		return CANNOTOPENS;
+	}
+	size_t nread;
+	char mem[1024];
+	char *ptr;
+	bool flag =false;
+	do {
+		nread = fread(mem, 1, sizeof(mem), local);
+		if (nread <= 0) {
+			/* end of file */
+			break;
+		}
+		ptr = mem;
+
+		do {
+			/* write the same data over and over, until error or completion */
+			rc = libssh2_channel_write(channel, ptr, nread);
+			if (rc < 0) {
+				flag = true;
+				break;
+			}
+			else {
+				/* rc indicates how many bytes were written this time */
+				ptr += rc;
+				nread -= rc;
+			}
+		} while (nread);
+
+	} while (1);
+	libssh2_channel_send_eof(channel);
+	libssh2_channel_wait_eof(channel);
+	libssh2_channel_wait_closed(channel);
+	//libssh2_session_free(channel);
+	channel = nullptr;
+	if (flag == true)
+	{
+		return SENDERROR;
 	}
 	return 0;
 }
