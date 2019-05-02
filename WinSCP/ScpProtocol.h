@@ -54,6 +54,17 @@
 #endif
 
 
+#ifndef CHANNELERROR
+#define CHANNELERROR	-6
+#endif
+#ifndef EXECERROR
+#define EXECERROR		-7
+#endif
+
+#ifndef ERRORCOMMAND 
+#define ERRORCOMMAND	-8
+#endif
+
 class ScpProtocol : public AllProtocol
 {
 public:
@@ -88,6 +99,13 @@ public:
 	//认证身份 
 	int AuthenticateIdentity();
 
+	//执行命令功能:
+	//waitsocket函数
+	int waitsocket(int socket_fd, LIBSSH2_SESSION *session);
+
+	int execOneCommand(const char *commandline, CString &result);
+
+	void ReleaseExec();
 
 
 	/*如果认证成功，建立好连接，这里开始发送文件*/
@@ -108,6 +126,10 @@ private:
 	
 	int rc;//返回值，用于判断函数是否执行成功
 	off_t got = 0;
+
+
+	//Exec
+	int bytecount = 0;
 };
 
 

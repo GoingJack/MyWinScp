@@ -34,7 +34,7 @@ void ScpProtocol::SetVal(CString & ipaddress, int &port, CString & username, CSt
 
 void ScpProtocol::setIpAddress(CString &ipaddress)
 {
-	this->hostaddr = inet_addr(ipaddress);
+	this->hostaddr = inet_addr(ipaddress);//转化为网络字节序
 }
 
 void ScpProtocol::setUserName(CString &username)
@@ -137,6 +137,127 @@ int ScpProtocol::AuthenticateIdentity()
 		}
 	}
 	return 0;
+}
+
+int ScpProtocol::waitsocket(int socket_fd, LIBSSH2_SESSION * session)
+{
+	struct timeval timeout;
+	int rc;
+	fd_set fd;
+	fd_set *writefd = NULL;
+	fd_set *readfd = NULL;
+	int dir;
+
+	timeout.tv_sec = 10;
+	timeout.tv_usec = 0;
+
+	FD_ZERO(&fd);
+
+	FD_SET(socket_fd, &fd);
+
+	/* now make sure we wait in the correct direction */
+	dir = libssh2_session_block_directions(session);
+
+	if (dir & LIBSSH2_SESSION_BLOCK_INBOUND)
+		readfd = &fd;
+
+	if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)
+		writefd = &fd;
+
+	rc = select(socket_fd + 1, readfd, writefd, NULL, &timeout);
+
+	return rc;
+}
+
+
+
+
+int ScpProtocol::execOneCommand(const char *commandline,CString &result)
+{
+	/* Exec non-blocking on the remove host */
+	while ((channel = libssh2_channel_open_session(session)) == NULL &&
+		libssh2_session_last_error(session, NULL, NULL, 0) ==
+		LIBSSH2_ERROR_EAGAIN)
+	{
+		waitsocket(sock, session);
+	}
+	if (channel == NULL)
+	{
+		ReleaseExec();
+		return CHANNELERROR;	
+	}
+	while ((rc = libssh2_channel_exec(channel, commandline)) ==
+		LIBSSH2_ERROR_EAGAIN)
+	{
+		waitsocket(sock, session);
+	}
+	if (rc != 0)
+	{
+		ReleaseExec();
+		return EXECERROR;
+	}
+	for (;; )
+	{
+		/* loop until we block */
+		int rc;
+		do
+		{
+			char buffer[0x4000];
+			rc = libssh2_channel_read(channel, buffer, sizeof(buffer));
+			if (rc > 0)
+			{
+				buffer[rc] = '\0';
+				result = buffer;
+				return 0;
+				/*int i;
+				bytecount += rc;
+				fprintf(stderr, "We read:\n");
+				for (i = 0; i < rc; ++i)
+					fputc(buffer[i], stderr);
+				fprintf(stderr, "\n");*/
+			}
+			else {
+				if (rc != LIBSSH2_ERROR_EAGAIN)
+					return ERRORCOMMAND;
+					/* no need to output this for the EAGAIN case */
+					//fprintf(stderr, "libssh2_channel_read returned %d\n", rc);
+			}
+		} while (rc > 0);
+
+		/* this is due to blocking that would occur otherwise so we loop on
+		   this condition */
+		if (rc == LIBSSH2_ERROR_EAGAIN)
+		{
+			waitsocket(sock, session);
+		}
+		else
+			break;
+	}
+	return 0;
+}
+
+void ScpProtocol::ReleaseExec()
+{
+	int exitcode;
+	char *exitsignal = (char *)"none";
+	exitcode = 127;
+	while ((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
+		waitsocket(sock, session);
+
+	if (rc == 0)
+	{
+		exitcode = libssh2_channel_get_exit_status(channel);
+		libssh2_channel_get_exit_signal(channel, &exitsignal,
+			NULL, NULL, NULL, NULL, NULL);
+	}
+
+	if (exitsignal)
+		printf("\nGot signal: %s\n", exitsignal);
+	else
+		printf("\nEXIT: %d bytecount: %d\n", exitcode, bytecount);
+
+	libssh2_channel_free(channel);
+	channel = NULL;
 }
 
 int ScpProtocol::SendFile(const CString & FilePath, const CString &ScpPath)
