@@ -4,7 +4,6 @@ class AllProtocol
 public:
 	AllProtocol();
 	~AllProtocol();
-	CString hostname;
 	unsigned long hostaddr;
 	int		port;
 

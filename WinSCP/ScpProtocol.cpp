@@ -23,10 +23,13 @@ ScpProtocol::~ScpProtocol()
 
 void ScpProtocol::SetVal(CString & ipaddress, int &port, CString & username, CString & password)
 {
+	
+
 	setIpAddress(ipaddress);
 	setPort(port);
 	setUserName(username);
 	setPassword(password);
+	
 }
 
 void ScpProtocol::setIpAddress(CString &ipaddress)
@@ -167,112 +170,10 @@ int ScpProtocol::waitsocket(int socket_fd, LIBSSH2_SESSION * session)
 }
 
 
-void ScpProtocol::Init_exec()
+
+
+int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 {
-//	struct sockaddr_in sin_exec;
-//	sock_exec = socket(AF_INET, SOCK_STREAM, 0);
-//
-//	sin_exec.sin_family = AF_INET;
-//	sin_exec.sin_port = htons(port);
-//	sin_exec.sin_addr.s_addr = hostaddr;
-//	if (connect(sock_exec, (struct sockaddr*)(&sin_exec),
-//		sizeof(struct sockaddr_in)) != 0) {
-//		//fprintf(stderr, "failed to connect!\n");
-//		return ;
-//	}
-//
-//	session_exec = libssh2_session_init();
-//	if (!session_exec)
-//		return ;
-//
-//	libssh2_session_set_blocking(session_exec, 0);
-//
-//	/* ... start it up. This will trade welcome banners, exchange keys,
-//	 * and setup crypto, compression, and MAC layers
-//	 */
-//
-//	 //5，进行连接
-//	while ((rc = libssh2_session_handshake(session_exec, sock_exec)) ==
-//		LIBSSH2_ERROR_EAGAIN);
-//	if (rc) {
-//		//fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
-//		return ;
-//	}
-//	LIBSSH2_KNOWNHOSTS *nh;
-//	/**********************************************************/
-//	nh = libssh2_knownhost_init(session_exec);
-//	if (!nh) {
-//		/* eeek, do cleanup here */
-//		return ;
-//	}
-//
-//	/* read all hosts from here */
-//	libssh2_knownhost_readfile(nh, "known_hosts",
-//		LIBSSH2_KNOWNHOST_FILE_OPENSSH);
-//
-//	/* store all known hosts to here */
-//	libssh2_knownhost_writefile(nh, "dumpfile",
-//		LIBSSH2_KNOWNHOST_FILE_OPENSSH);
-//	size_t len; int type;
-//	fingerprint = libssh2_session_hostkey(session_exec, &len, &type);
-//	if (fingerprint) {
-//		struct libssh2_knownhost *host;
-//#if LIBSSH2_VERSION_NUM >= 0x010206
-//		/* introduced in 1.2.6 */
-//		int check = libssh2_knownhost_checkp(nh, hostname, port,
-//			fingerprint, len,
-//			LIBSSH2_KNOWNHOST_TYPE_PLAIN |
-//			LIBSSH2_KNOWNHOST_KEYENC_RAW,
-//			&host);
-//#else
-//		/* 1.2.5 or older */
-//		int check = libssh2_knownhost_check(nh, hostname,
-//			fingerprint, len,
-//			LIBSSH2_KNOWNHOST_TYPE_PLAIN |
-//			LIBSSH2_KNOWNHOST_KEYENC_RAW,
-//			&host);
-//#endif
-//		//fprintf(stderr, "Host check: %d, key: %s\n", check,
-//			//(check <= LIBSSH2_KNOWNHOST_CHECK_MISMATCH) ?
-//			//host->key : "<none>");
-//
-//		/*****
-//		 * At this point, we could verify that 'check' tells us the key is
-//		 * fine or bail out.
-//		 *****/
-//	}
-//	else {
-//		/* eeek, do cleanup here */
-//		return ;
-//	}
-//	libssh2_knownhost_free(nh);
-//	/********************验证身份**************************************/
-//
-//	if (strlen(password) != 0) {
-//		/* We could authenticate via password */
-//		while ((rc = libssh2_userauth_password(session_exec, username, password)) ==
-//			LIBSSH2_ERROR_EAGAIN);
-//		if (rc) {
-//			//fprintf(stderr, "Authentication by password failed.\n");
-//			return;
-//		}
-//	}
-//	else {
-//		/* Or by public key */
-//		while ((rc = libssh2_userauth_publickey_fromfile(session_exec, username,
-//			"/home/user/"
-//			".ssh/id_rsa.pub",
-//			"/home/user/"
-//			".ssh/id_rsa",
-//			password)) ==
-//			LIBSSH2_ERROR_EAGAIN);
-//		if (rc) {
-//			//fprintf(stderr, "\tAuthentication by public key failed\n");
-//			return ;
-//		}
-//	}
-//	
-	
 	/* Exec non-blocking on the remove host */
 	while ((channel = libssh2_channel_open_session(session)) == NULL &&
 		libssh2_session_last_error(session, NULL, NULL, 0) ==
@@ -280,11 +181,6 @@ void ScpProtocol::Init_exec()
 	{
 		waitsocket(sock, session);
 	}
-}
-
-int ScpProtocol::execOneCommand(const char *commandline,CString &result)
-{
-	
 	if (channel == NULL)
 	{
 		ReleaseExec();
@@ -308,7 +204,6 @@ int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 		{
 			char buffer[0x4000];
 			rc = libssh2_channel_read(channel, buffer, sizeof(buffer));
-			
 			if (rc > 0)
 			{
 				buffer[rc] = '\0';
@@ -333,7 +228,7 @@ int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 		   this condition */
 		if (rc == LIBSSH2_ERROR_EAGAIN)
 		{
-			waitsocket(sock_exec, session_exec);
+			waitsocket(sock, session);
 		}
 		else
 			break;
