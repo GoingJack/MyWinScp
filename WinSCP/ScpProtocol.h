@@ -103,6 +103,8 @@ public:
 	//waitsocketº¯Êý
 	int waitsocket(int socket_fd, LIBSSH2_SESSION *session);
 
+	void Init_exec();
+
 	int execOneCommand(const char *commandline, CString &result);
 
 	void ReleaseExec();
@@ -130,6 +132,9 @@ private:
 
 	//Exec
 	int bytecount = 0;
+	int sock_exec;
+	LIBSSH2_SESSION *session_exec;
+	LIBSSH2_CHANNEL *channel_exec;
 };
 
 
