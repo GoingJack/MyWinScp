@@ -85,37 +85,37 @@ public:
 	int OpenlocalFile(const CString &FilePath);
 
 	//创建套接口
-	bool CreateSock();
+	bool CreateSock(int &sockoption);
 
 	//尝试连接远程主机
-	bool Connect();
+	bool Connect(int &sockoption);
 
 	//创建session会话的实例
-	bool CreateSession();
+	bool CreateSession(LIBSSH2_SESSION **sessionoption);
 
 	//启动连接，欢迎横幅，交换密钥，设置加密，压缩和MAC层
-	bool StartupConnect();
+	bool StartupConnect(int &sockoption, LIBSSH2_SESSION *sessionoption);
 
 	//认证身份 
-	int AuthenticateIdentity();
+	int AuthenticateIdentity(LIBSSH2_SESSION *sessionoption);
 
 	//执行命令功能:
 	//waitsocket函数
 	int waitsocket(int socket_fd, LIBSSH2_SESSION *session);
 
-	int execOneCommand(const char *commandline, CString &result);
+	int execOneCommand(const char *commandline, CString &resultint ,int &sock_option, LIBSSH2_SESSION *session_option);
 
-	void ReleaseExec();
+	void ReleaseExec(int &sock_option, LIBSSH2_SESSION *session_option);
 
 
 	/*如果认证成功，建立好连接，这里开始发送文件*/
 	int SendFile(const CString &FilePath,const CString &ScpPath, CProgressCtrl &m_send_process);
 
 	//释放资源
-	void Release();
-private:
+	void Release(int &sockoption, LIBSSH2_SESSION *sessionoption);
+public:
 	
-	int sock, i, auth_pw;
+	int sock, recv_sock, i, auth_pw;
 	FILE *local;
 
 	struct sockaddr_in sin;
@@ -145,6 +145,14 @@ public:
 	bool recv_file_vid_scp(CString scpPath , CString destination, CProgressCtrl &m_send_process);
 	LIBSSH2_SESSION *recv_session;
 	LIBSSH2_CHANNEL *recv_channel;
+
+
+
+	//俩个线程同时运作
+	void recv_release();
+
+
+
 
 
 

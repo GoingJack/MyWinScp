@@ -12,6 +12,7 @@ ScpProtocol::ScpProtocol()
 	auth_pw = 1;
 	local = 0;
 	session = nullptr;
+	recv_session = nullptr;
 	sock = -1;
 }
 
@@ -75,53 +76,53 @@ int ScpProtocol::OpenlocalFile(const CString &FilePath)
 	return 0;
 }
 
-bool ScpProtocol::CreateSock()
+bool ScpProtocol::CreateSock(int &sockoption)
 {
 	
-	sock = socket(AF_INET, SOCK_STREAM, 0);
+	sockoption = socket(AF_INET, SOCK_STREAM, 0);
 
-	if (sock == -1)
+	if (sockoption == -1)
 		return false;
 	return true;
 }
 
-bool ScpProtocol::Connect()
+bool ScpProtocol::Connect(int &sockoption)
 {
 	
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(port);
 	sin.sin_addr.s_addr = hostaddr;
 
-	if (connect(sock, (struct sockaddr*)(&sin), sizeof(struct sockaddr_in)) != 0)
+	if (connect(sockoption, (struct sockaddr*)(&sin), sizeof(struct sockaddr_in)) != 0)
 		//failed to connect!\n
 		return false;
 	return true;
 }
 
-bool ScpProtocol::CreateSession()
+bool ScpProtocol::CreateSession(LIBSSH2_SESSION **sessionoption)
 {
-	session = libssh2_session_init();
-	if(!session)
+	*sessionoption = libssh2_session_init();
+	if(!sessionoption)
 		return false;
 	return true;
 }
 
-bool ScpProtocol::StartupConnect()
+bool ScpProtocol::StartupConnect(int &sockoption,LIBSSH2_SESSION *sessionoption)
 {
-	rc = libssh2_session_handshake(session, sock);
+	rc = libssh2_session_handshake(sessionoption, sockoption);
 	if(rc)
 		//Failure establishing SSH session: %d\n", rc
 		return false;
 	return true;
 }
 
-int ScpProtocol::AuthenticateIdentity()
+int ScpProtocol::AuthenticateIdentity(LIBSSH2_SESSION *sessionoption)
 {
-	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
+	fingerprint = libssh2_hostkey_hash(sessionoption, LIBSSH2_HOSTKEY_HASH_SHA1);
 	if (auth_pw)
 	{
 		/* We could authenticate via password */
-		if (libssh2_userauth_password(session, username, password))
+		if (libssh2_userauth_password(sessionoption, username, password))
 		{
 			return PASSWORDERROR;
 		}
@@ -129,7 +130,7 @@ int ScpProtocol::AuthenticateIdentity()
 	else
 	{
 		/* Or by public key */
-		if (libssh2_userauth_publickey_fromfile(session, username,
+		if (libssh2_userauth_publickey_fromfile(sessionoption, username,
 			"/home/username/.ssh/id_rsa.pub",
 			"/home/username/.ssh/id_rsa",
 			password)) {
@@ -172,29 +173,29 @@ int ScpProtocol::waitsocket(int socket_fd, LIBSSH2_SESSION * session)
 
 
 
-int ScpProtocol::execOneCommand(const char *commandline,CString &result)
+int ScpProtocol::execOneCommand(const char *commandline,CString &result,int &sock_option,LIBSSH2_SESSION *session_option)
 {
 	/* Exec non-blocking on the remove host */
 	LIBSSH2_CHANNEL *exec_channel;
-	while ((exec_channel = libssh2_channel_open_session(session)) == NULL &&
-		libssh2_session_last_error(session, NULL, NULL, 0) ==
+	while ((exec_channel = libssh2_channel_open_session(session_option)) == NULL &&
+		libssh2_session_last_error(session_option, NULL, NULL, 0) ==
 		LIBSSH2_ERROR_EAGAIN)
 	{
-		waitsocket(sock, session);
+		waitsocket(sock_option, session_option);
 	}
 	if (exec_channel == NULL)
 	{
-		ReleaseExec();
+		ReleaseExec(sock_option,session_option);
 		return CHANNELERROR;	
 	}
 	while ((rc = libssh2_channel_exec(exec_channel, commandline)) ==
 		LIBSSH2_ERROR_EAGAIN)
 	{
-		waitsocket(sock, session);
+		waitsocket(sock_option, session_option);
 	}
 	if (rc != 0)
 	{
-		ReleaseExec();
+		ReleaseExec(sock_option, session_option);
 		return EXECERROR;
 	}
 	for (;; )
@@ -229,7 +230,7 @@ int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 		   this condition */
 		if (rc == LIBSSH2_ERROR_EAGAIN)
 		{
-			waitsocket(sock, session);
+			waitsocket(sock_option, session);
 		}
 		else
 			break;
@@ -238,13 +239,13 @@ int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 	return 0;
 }
 
-void ScpProtocol::ReleaseExec()
+void ScpProtocol::ReleaseExec(int &sock_option,LIBSSH2_SESSION *session_option)
 {
 	int exitcode;
 	char *exitsignal = (char *)"none";
 	exitcode = 127;
 	while ((rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN)
-		waitsocket(sock, session);
+		waitsocket(sock_option, session_option);
 
 	if (rc == 0)
 	{
@@ -257,13 +258,13 @@ void ScpProtocol::ReleaseExec()
 	{
 		CString TEMP;
 		TEMP.Format("\nGot signal: %s\n", exitsignal);
-		MessageBox(NULL, TEMP, "", MB_OK);
+		//MessageBox(NULL, TEMP, "", MB_OK);
 	}
 	else
 	{
 		CString TEMP;
 		TEMP.Format("\nEXIT: %d bytecount: %d\n", exitcode, bytecount);
-		MessageBox(NULL, TEMP, "", MB_OK);
+		//MessageBox(NULL, TEMP, "", MB_OK);
 	}
 		
 
@@ -352,23 +353,6 @@ int ScpProtocol::SendFile(const CString & FilePath, const CString &ScpPath, CPro
 	return 0;
 }
 
-void ScpProtocol::Release()
-{
-	if (session)
-	{
-		libssh2_session_free(session);
-	}
-	if (sock != -1)
-	{
-		closesocket(sock);
-	}
-	if (local)
-	{
-		fclose(local);
-		local = nullptr;
-	}
-}
-
 void ScpProtocol::channel_shell_init(CString &init)
 {
 	channel_shell = libssh2_channel_open_session(session);
@@ -409,9 +393,10 @@ void ScpProtocol::channel_shell_free()
 
 bool ScpProtocol::recv_file_vid_scp(CString scppath,CString destination, CProgressCtrl &m_recv_process)
 {
+	m_recv_process.SetPos(0);
 	m_recv_process.ShowWindow(SW_NORMAL);
 	int total = 0;
-	FILE *fp = fopen(destination, "ab+");
+	FILE *fp = fopen(destination, "wb");
 	if (fp == NULL)
 	{
 		MessageBox(NULL, "选择位置没有写入权限", "警告", NULL);
@@ -419,22 +404,22 @@ bool ScpProtocol::recv_file_vid_scp(CString scppath,CString destination, CProgre
 	}
 	stat(destination, &recv_fileinfo);
 	long filesize;
-	int currentsize = 0;
+	long currentsize = 0;
 	do 
 	{
-		recv_channel = libssh2_scp_recv(session, scppath, &recv_fileinfo);
+		recv_channel = libssh2_scp_recv(recv_session, scppath, &recv_fileinfo);
 		filesize = recv_fileinfo.st_size;
 		if (!recv_channel) {
-			if (libssh2_session_last_errno(session) != LIBSSH2_ERROR_EAGAIN) {
+			if (libssh2_session_last_errno(recv_session) != LIBSSH2_ERROR_EAGAIN) {
 				char *err_msg;
 
-				libssh2_session_last_error(session, &err_msg, NULL, 0);
+				libssh2_session_last_error(recv_session, &err_msg, NULL, 0);
 				//fprintf(stderr, "%s\n", err_msg);
 				return FALSE;
 			}
 			else {
 				//fprintf(stderr, "libssh2_scp_recv() spin\n");
-				waitsocket(sock, session);
+				waitsocket(sock, recv_session);
 			}
 		}
 	} while (!recv_channel);
@@ -466,8 +451,39 @@ bool ScpProtocol::recv_file_vid_scp(CString scppath,CString destination, CProgre
 			}
 		} while (rc > 0);
 	}
+	got = 0;
 	fclose(fp);
 	return TRUE;
 
 }
+
+void ScpProtocol::recv_release()
+{
+	if (recv_session)
+	{
+		libssh2_session_free(recv_session);
+	}
+	if (recv_sock != -1)
+	{
+		closesocket(recv_sock);
+	}
+}
+
+void ScpProtocol::Release(int &sockoption,LIBSSH2_SESSION *sessionoption)
+{
+	if (sessionoption)
+	{
+		libssh2_session_free(sessionoption);
+	}
+	if (sockoption != -1)
+	{
+		closesocket(sockoption);
+	}
+	if (local)
+	{
+		fclose(local);
+		local = nullptr;
+	}
+}
+
 
