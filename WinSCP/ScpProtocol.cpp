@@ -175,18 +175,19 @@ int ScpProtocol::waitsocket(int socket_fd, LIBSSH2_SESSION * session)
 int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 {
 	/* Exec non-blocking on the remove host */
-	while ((channel = libssh2_channel_open_session(session)) == NULL &&
+	LIBSSH2_CHANNEL *exec_channel;
+	while ((exec_channel = libssh2_channel_open_session(session)) == NULL &&
 		libssh2_session_last_error(session, NULL, NULL, 0) ==
 		LIBSSH2_ERROR_EAGAIN)
 	{
 		waitsocket(sock, session);
 	}
-	if (channel == NULL)
+	if (exec_channel == NULL)
 	{
 		ReleaseExec();
 		return CHANNELERROR;	
 	}
-	while ((rc = libssh2_channel_exec(channel, commandline)) ==
+	while ((rc = libssh2_channel_exec(exec_channel, commandline)) ==
 		LIBSSH2_ERROR_EAGAIN)
 	{
 		waitsocket(sock, session);
@@ -203,7 +204,7 @@ int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 		do
 		{
 			char buffer[0x4000];
-			rc = libssh2_channel_read(channel, buffer, sizeof(buffer));
+			rc = libssh2_channel_read(exec_channel, buffer, sizeof(buffer));
 			if (rc > 0)
 			{
 				buffer[rc] = '\0';
@@ -233,6 +234,7 @@ int ScpProtocol::execOneCommand(const char *commandline,CString &result)
 		else
 			break;
 	}
+	libssh2_channel_close(exec_channel);
 	return 0;
 }
 
@@ -252,9 +254,18 @@ void ScpProtocol::ReleaseExec()
 	}
 
 	if (exitsignal)
-		printf("\nGot signal: %s\n", exitsignal);
+	{
+		CString TEMP;
+		TEMP.Format("\nGot signal: %s\n", exitsignal);
+		MessageBox(NULL, TEMP, "", MB_OK);
+	}
 	else
-		printf("\nEXIT: %d bytecount: %d\n", exitcode, bytecount);
+	{
+		CString TEMP;
+		TEMP.Format("\nEXIT: %d bytecount: %d\n", exitcode, bytecount);
+		MessageBox(NULL, TEMP, "", MB_OK);
+	}
+		
 
 	libssh2_channel_free(channel);
 	channel = NULL;
