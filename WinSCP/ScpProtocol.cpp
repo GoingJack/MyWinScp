@@ -260,8 +260,11 @@ void ScpProtocol::ReleaseExec()
 	channel = NULL;
 }
 
-int ScpProtocol::SendFile(const CString & FilePath, const CString &ScpPath)
+int ScpProtocol::SendFile(const CString & FilePath, const CString &ScpPath, CProgressCtrl &m_send_process)
 {
+	m_send_process.ShowWindow(SW_NORMAL);
+
+
 	if (OpenlocalFile(FilePath))
 	{
 		return OPENFILEERROR;
@@ -270,14 +273,39 @@ int ScpProtocol::SendFile(const CString & FilePath, const CString &ScpPath)
 		(unsigned long)fileinfo.st_size);
 	if (!channel)
 	{
+		int timeout = 0;
+		libssh2_channel_free(channel);
+		channel = NULL;
+		while (!(channel = libssh2_scp_send(session, ScpPath, fileinfo.st_mode & 0777,
+			(unsigned long)fileinfo.st_size)))
+		{
+			if (timeout == 10)
+				break;
+			timeout++;
+		}
+
 		return CANNOTOPENS;
 	}
 	size_t nread;
-	char mem[1024];
+	char mem[1024 *24];
 	char *ptr;
 	bool flag =false;
+
+	long  totalsize = fileinfo.st_size; 
+	int current = 0;
+
+
 	do {
-		nread = fread(mem, 1, sizeof(mem), local);
+		nread = fread(mem, 1, 1024 * 24, local);
+		//更新进度条/
+		current += (1024 * 24);
+		double ff = (double)current / (double)totalsize;
+		int current_precent = int(ff * 100);
+		
+
+		m_send_process.SetPos(current_precent);
+
+
 		if (nread <= 0) {
 			/* end of file */
 			break;
@@ -307,7 +335,9 @@ int ScpProtocol::SendFile(const CString & FilePath, const CString &ScpPath)
 	if (flag == true)
 	{
 		return SENDERROR;
+		fclose(local);
 	}
+	fclose(local);
 	return 0;
 }
 
@@ -327,3 +357,106 @@ void ScpProtocol::Release()
 		local = nullptr;
 	}
 }
+
+void ScpProtocol::channel_shell_init(CString &init)
+{
+	channel_shell = libssh2_channel_open_session(session);
+	if (channel_shell == NULL)
+	{
+		MessageBox(NULL,"init channel_shell failed!\n","提示",MB_OK);
+		return;
+	}
+	if (libssh2_channel_request_pty(channel_shell, "xterm") != 0) {
+		MessageBox(NULL, "Failed to request a pty\n", "提示", MB_OK);
+		return;
+	}
+	if (libssh2_channel_shell(channel_shell) != 0) {
+		MessageBox(NULL, "Failed to open a shell", "提示", MB_OK);
+		return;
+	}
+	char initbuf[1024] = { 0 };
+	libssh2_channel_read(channel_shell, initbuf, 1024);
+	init = initbuf;
+}
+
+void ScpProtocol::channel_shell_exec(const CString command,CString &result)
+{
+	char sendbuf[2048] = { 0 };
+	char recvbuf[2048] = { 0 };
+	sprintf(sendbuf, "%s\n", command);
+	libssh2_channel_write(channel_shell, sendbuf, strlen(sendbuf));
+
+	libssh2_channel_read(channel_shell, recvbuf, 2048);
+	result = recvbuf;
+}
+
+void ScpProtocol::channel_shell_free()
+{
+	libssh2_channel_free(channel_shell);
+	channel_shell = NULL;
+}
+
+bool ScpProtocol::recv_file_vid_scp(CString scppath,CString destination, CProgressCtrl &m_recv_process)
+{
+	m_recv_process.ShowWindow(SW_NORMAL);
+	int total = 0;
+	FILE *fp = fopen(destination, "ab+");
+	if (fp == NULL)
+	{
+		MessageBox(NULL, "选择位置没有写入权限", "警告", NULL);
+		return FALSE;
+	}
+	stat(destination, &recv_fileinfo);
+	long filesize;
+	int currentsize = 0;
+	do 
+	{
+		recv_channel = libssh2_scp_recv(session, scppath, &recv_fileinfo);
+		filesize = recv_fileinfo.st_size;
+		if (!recv_channel) {
+			if (libssh2_session_last_errno(session) != LIBSSH2_ERROR_EAGAIN) {
+				char *err_msg;
+
+				libssh2_session_last_error(session, &err_msg, NULL, 0);
+				//fprintf(stderr, "%s\n", err_msg);
+				return FALSE;
+			}
+			else {
+				//fprintf(stderr, "libssh2_scp_recv() spin\n");
+				waitsocket(sock, session);
+			}
+		}
+	} while (!recv_channel);
+	//fprintf(stderr, "libssh2_scp_recv() is done, now receive data!\n");
+	while (got < recv_fileinfo.st_size) {
+		char mem[1024 * 24];
+		int rc;
+
+		do {
+			int amount = sizeof(mem);
+
+			if ((recv_fileinfo.st_size - got) < amount) {
+				amount = recv_fileinfo.st_size - got;
+			}
+			if (amount == 0)
+				break;
+			/* loop until we block */
+			rc = libssh2_channel_read(recv_channel, mem, amount);
+			currentsize += rc;
+			int current_precent = ((double)currentsize / (double)filesize) * 100;
+			m_recv_process.SetPos(current_precent);
+			if (rc > 0) {
+				//write(1, mem, rc);
+				//mem[rc] = '\0';
+				fwrite(mem, sizeof(char), rc, fp);
+				//fprintf(fp,"%s", mem);
+				got += rc;
+				total += rc;
+			}
+		} while (rc > 0);
+	}
+	fclose(fp);
+	return TRUE;
+
+}
+

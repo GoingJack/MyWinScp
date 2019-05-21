@@ -109,7 +109,7 @@ public:
 
 
 	/*如果认证成功，建立好连接，这里开始发送文件*/
-	int SendFile(const CString &FilePath,const CString &ScpPath);
+	int SendFile(const CString &FilePath,const CString &ScpPath, CProgressCtrl &m_send_process);
 
 	//释放资源
 	void Release();
@@ -123,6 +123,7 @@ private:
 	LIBSSH2_SESSION *session;
 	LIBSSH2_CHANNEL *channel;
 	struct stat fileinfo;
+	struct stat recv_fileinfo;
 	
 	int rc;//返回值，用于判断函数是否执行成功
 	off_t got = 0;
@@ -130,6 +131,24 @@ private:
 
 	//Exec
 	int bytecount = 0;
+
+	//shell 
+public:
+	LIBSSH2_CHANNEL *channel_shell;//实现交互命令执行的channel
+	void channel_shell_init(CString &init);//初始化channel_shell;
+	void channel_shell_exec(const CString command, CString &result);
+	void channel_shell_free();
+
+
+
+	//实现scp文件的接受。
+	bool recv_file_vid_scp(CString scpPath , CString destination, CProgressCtrl &m_send_process);
+	LIBSSH2_SESSION *recv_session;
+	LIBSSH2_CHANNEL *recv_channel;
+
+
+
+
 };
 
 

@@ -23,7 +23,7 @@
     <ProjectGuid>{33AA2A5F-942B-40B9-9F5C-10CA53DC401C}</ProjectGuid>
     <Keyword>MFCProj</Keyword>
     <RootNamespace>WinSCP</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
